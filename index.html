@@ -84,7 +84,7 @@ section.block{padding-block:64px}
 .story{position:relative;background:#08111C;color:#fff;border-radius:18px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 24px 40px -22px rgba(4,29,53,.7)}
 .story .media{position:relative;aspect-ratio:4/3;background:#0B1A2B}
 .story .media img,.story .media .ph{width:100%;height:100%;object-fit:cover}
-.story .media::after{content:"";position:absolute;inset:auto 0 0 0;height:30%;background:linear-gradient(180deg,rgba(8,17,28,0),#08111C)}
+.story .media::after{pointer-events:none;content:"";position:absolute;inset:auto 0 0 0;height:30%;background:linear-gradient(180deg,rgba(8,17,28,0),#08111C)}
 .story .body{padding:6px 20px 22px;display:flex;flex-direction:column;align-items:center;text-align:center;gap:4px;flex:1;position:relative;z-index:1}
 .story h3{font-size:clamp(20px,2.2vw,25px);font-weight:800;font-stretch:125%;text-transform:uppercase;line-height:1.02}
 .story .ver{margin:2px 0 0;color:#D6DEE7;font-weight:600;font-size:15px}
@@ -124,6 +124,19 @@ section.block{padding-block:64px}
 .flag.star{background:var(--navy);color:#fff}
 .flag.res{background:var(--sun);color:var(--ink)}
 .flag.sold{background:var(--ink);color:#fff}
+.slides{position:absolute;inset:0}
+.slides>img,.slides>.ph{width:100%;height:100%;object-fit:cover}
+.tapnext{position:absolute;inset:0;z-index:2;border:0;background:transparent;cursor:pointer;padding:0}
+.tapnext:focus-visible{outline:none}
+.cnav{position:absolute;top:50%;transform:translateY(-50%);z-index:3;width:36px;height:36px;border-radius:50%;border:0;background:rgba(255,255,255,.9);color:var(--ink);font-size:22px;line-height:1;cursor:pointer;display:grid;place-items:center;box-shadow:0 2px 8px rgba(0,0,0,.25);opacity:.9}
+.cprev{left:8px}.cnext{right:8px}
+@media (hover:hover){.cnav{opacity:0;transition:opacity .15s}.media:hover .cnav,.cnav:focus-visible{opacity:1}}
+.cctr{position:absolute;right:10px;bottom:10px;z-index:3;background:rgba(4,18,31,.72);color:#fff;font-size:12px;font-weight:600;padding:3px 8px;border-radius:6px;pointer-events:none}
+.dots{position:absolute;left:0;right:0;bottom:12px;z-index:3;display:flex;justify-content:center;gap:5px;pointer-events:none}
+.dots i{width:7px;height:7px;border-radius:50%;background:rgba(255,255,255,.55);box-shadow:0 0 0 1px rgba(0,0,0,.2)}
+.dots i.on{background:#fff}
+.story .dots{bottom:34px}.story .cctr{bottom:auto;top:12px;right:12px}
+.story .media:has(.sticker) .cctr{display:none}
 .count{position:absolute;right:10px;bottom:10px;background:rgba(4,18,31,.72);color:#fff;font-size:12px;font-weight:600;padding:3px 8px;border-radius:6px}
 .car .body{padding:14px 16px 16px;display:flex;flex-direction:column;gap:6px;flex:1}
 .car .cat{font-size:13px;font-weight:600;color:var(--muted);display:flex;align-items:center;gap:6px}
@@ -567,11 +580,43 @@ function photo(v, i){
   return '<div class="ph" style="--c:'+col(catById(v.cat).color)+'" role="img" aria-label="'+esc(fullName(v))+' (sin foto)">'+CAR_SVG+'</div>';
 }
 
+/* ------------------------------ carrusel de fotos en tarjetas ------------------------------ */
+var CI = {};
+function slidesInner(v){
+  var fs=fotos(v), n=fs.length, i=n?((CI[v.id]||0)%n+n)%n:0, nm=esc(fullName(v));
+  if(n<2) return photo(v,0);
+  return photo(v,i)+
+    '<button class="tapnext" data-act="cnext" data-id="'+v.id+'" aria-label="Ver la foto siguiente de '+nm+'"></button>'+
+    '<button class="cnav cprev" data-act="cprev" data-id="'+v.id+'" aria-label="Foto anterior de '+nm+'">‹</button>'+
+    '<button class="cnav cnext" data-act="cnext" data-id="'+v.id+'" aria-label="Foto siguiente de '+nm+'">›</button>'+
+    '<span class="cctr">'+(i+1)+' / '+n+'</span>'+
+    '<span class="dots" aria-hidden="true">'+fs.map(function(_,k){ return '<i'+(k===i?' class="on"':'')+'></i>'; }).join("")+'</span>';
+}
+function slides(v){ return '<div class="slides" data-media="'+v.id+'">'+slidesInner(v)+'</div>'; }
+function stepCard(id,d){
+  var v=vehById(id); if(!v) return; var n=fotos(v).length; if(n<2) return;
+  CI[id]=(((CI[id]||0)+d)%n+n)%n;
+  var focusAct=document.activeElement&&document.activeElement.dataset?document.activeElement.dataset.act:null;
+  document.querySelectorAll('[data-media="'+id+'"]').forEach(function(el){
+    var had=el.contains(document.activeElement);
+    el.innerHTML=slidesInner(v);
+    if(had && focusAct){ var b=el.querySelector('.cnav[data-act="'+focusAct+'"]')||el.querySelector('.cnav.cnext'); if(b) b.focus(); }
+  });
+}
+var touchX=null, touchEl=null;
+document.addEventListener("touchstart",function(e){ var el=e.target.closest("[data-media],.gal .main"); touchEl=el; touchX=el?e.touches[0].clientX:null; },{passive:true});
+document.addEventListener("touchend",function(e){
+  if(touchX==null||!touchEl) return; var dx=e.changedTouches[0].clientX-touchX, el=touchEl; touchX=null; touchEl=null;
+  if(Math.abs(dx)<40) return;
+  if(el.dataset && el.dataset.media){ stepCard(el.dataset.media, dx<0?1:-1); }
+  else if(ui.open){ var n=fotos(vehById(ui.open)).length; if(n>1){ ui.gi=(ui.gi+(dx<0?1:-1)+n)%n; renderDetail(); } }
+},{passive:true});
+
 /* ------------------------------ public render ------------------------------ */
 function storyCard(v,o){
   var p=(o&&o.ahora)||v.precio, m=v.moneda, d=o?pct(o.antes,o.ahora):0;
   return '<article class="story">'+
-    '<div class="media">'+photo(v)+(o&&o.etiqueta?'<span class="tag">'+esc(o.etiqueta)+'</span>':'')+(d?'<span class="sticker">-'+d+'%</span>':'')+'</div>'+
+    '<div class="media">'+slides(v)+(o&&o.etiqueta?'<span class="tag">'+esc(o.etiqueta)+'</span>':'')+(d?'<span class="sticker">-'+d+'%</span>':'')+'</div>'+
     '<div class="body"><h3>'+esc(title(v))+'</h3>'+(v.version?'<p class="ver">'+esc(v.version)+'</p>':'')+
     (specLine(v)?'<p class="spec">'+esc(specLine(v))+'</p>':'')+
     (p?'<div class="big price">'+short(p,m)+'</div>'+(o&&o.antes&&o.ahora&&o.antes>o.ahora?'<div class="old price">'+money(o.antes,m)+'</div>':''):'<div class="big ask">Consultá precio</div>')+
@@ -585,7 +630,7 @@ function carCard(v){
   var sold=v.estado==="vendido", res=v.estado==="reservado";
   var flag = sold?'<span class="ribbon">Vendido</span>':res?'<span class="flag res">Reservado</span>':o?'<span class="flag">Oferta</span>':(v.destacado?'<span class="flag star">Destacado</span>':'');
   var chips=[v.anio, kmTxt(v), v.caja, v.combustible].filter(Boolean);
-  return '<article class="car'+(sold?' sold':'')+'"><div class="media">'+photo(v)+flag+(n>1?'<span class="count">'+n+' fotos</span>':'')+'</div>'+
+  return '<article class="car'+(sold?' sold':'')+'"><div class="media">'+slides(v)+flag+'</div>'+
     '<div class="body"><span class="cat"><i style="background:'+col(c.color)+'"></i>'+esc(c.nombre)+'</span>'+
     '<h3><button class="open" data-open="'+v.id+'">'+esc(title(v))+'</button></h3>'+(v.version?'<p class="ver">'+esc(v.version)+'</p>':'')+
     (chips.length?'<div class="specs">'+chips.map(function(x){return '<span>'+esc(x)+'</span>';}).join("")+'</div>':'')+
@@ -1038,6 +1083,7 @@ function onClick(e){
   var t=e.target.closest("button,[data-act],[data-open]"); if(!t) return;
   if(t.dataset.open){ openDetail(t.dataset.open); return; }
   var a=t.dataset.act;
+  if(a==="cnext"||a==="cprev"){ e.preventDefault(); stepCard(t.dataset.id, a==="cnext"?1:-1); return; }
   if(a==="closebg"){ if(e.target===t) closeDetail(); return; }
   if(a==="close"){ closeDetail(); return; }
   if(a==="gprev"||a==="gnext"){ var n=fotos(vehById(ui.open)).length; ui.gi=(ui.gi+(a==="gnext"?1:-1)+n)%n; renderDetail(); var nb=$(".gal ."+(a==="gnext"?"next":"prev")); if(nb) nb.focus(); return; }
